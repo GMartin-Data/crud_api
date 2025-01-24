@@ -35,7 +35,12 @@ async def list_products(
     Returns:
         List of products
     """
-    products = session.exec(select(Product).offset(skip).limit(limit)).all()
+    products = session.exec(
+        select(Product)
+        .order_by(Product.ProductID)
+        .offset(skip)
+        .limit(limit)
+    ).all()
     return products
 
 
