@@ -24,6 +24,7 @@ class ProductSize(str, Enum):
     S = "S"
     M = "M"
     L = "L"
+    XL = "XL"
     SIZE_38 = "38"
     SIZE_40 = "40"
     SIZE_42 = "42"
