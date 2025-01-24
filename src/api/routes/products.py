@@ -7,6 +7,7 @@ from typing import List
 from uuid import uuid4
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlmodel import Session, select
+from datetime import datetime, timezone
 
 from src.database.connection import get_session
 from src.api.models.product import (
@@ -36,10 +37,7 @@ async def list_products(
         List of products
     """
     products = session.exec(
-        select(Product)
-        .order_by(Product.ProductID)
-        .offset(skip)
-        .limit(limit)
+        select(Product).order_by(Product.ProductID).offset(skip).limit(limit)
     ).all()
     return products
 
@@ -78,15 +76,26 @@ async def create_product(
     """Create a new product.
 
     Args:
-        product: Product data
+        product: Product data from the request
         session: Database session
 
     Returns:
-        Created product
-    """
-    db_product = Product.model_validate(product)
-    db_product.rowguid = str(uuid4())  # Generate a new UUID
+        Created product with auto-generated fields
 
+    Note:
+        Auto-generated fields (ProductID, rowguid, ModifiedDate) are set here
+        before committing to the database.
+    """
+    # Convert ProductCreate to dict and add auto-generated fields
+    product_data = product.model_dump()
+    product_data.update(
+        {"rowguid": str(uuid4()), "ModifiedDate": datetime.now(timezone.utc)}
+    )
+
+    # Create Product instance with all fields
+    db_product = Product.model_validate(product_data)
+
+    # Add and commit to database
     session.add(db_product)
     session.commit()
     session.refresh(db_product)

@@ -11,7 +11,11 @@ from sqlmodel import Field, Relationship, SQLModel
 
 
 class ProductBase(SQLModel):
-    """Base model for Product with shared attributes."""
+    """Base model for Product with shared attributes.
+
+    This model contains fields that are common to both creation
+    and database storage, excluding auto-generated fields.
+    """
 
     Name: str = Field(nullable=False)
     ProductNumber: str = Field(nullable=False)
@@ -25,6 +29,8 @@ class ProductBase(SQLModel):
     DiscontinuedDate: Optional[datetime] = None
     ThumbNailPhoto: Optional[bytes] = None
     ThumbnailPhotoFileName: Optional[str] = None
+    ProductModelID: Optional[int] = Field(default=None)
+    ProductCategoryID: Optional[int] = Field(default=None)
 
 
 # Define the link model first so it can be referenced by other models
@@ -62,8 +68,7 @@ class ProductDescription(SQLModel, table=True):
 
     # Define the relationship to ProductModel through the link table
     product_models: List["ProductModel"] = Relationship(
-        back_populates="descriptions",
-        link_model=ProductModelProductDescription
+        back_populates="descriptions", link_model=ProductModelProductDescription
     )
 
 
@@ -84,8 +89,7 @@ class ProductModel(SQLModel, table=True):
     # Relationships
     products: List["Product"] = Relationship(back_populates="product_model")
     descriptions: List[ProductDescription] = Relationship(
-        back_populates="product_models",
-        link_model=ProductModelProductDescription
+        back_populates="product_models", link_model=ProductModelProductDescription
     )
 
 
@@ -111,22 +115,31 @@ class ProductCategory(SQLModel, table=True):
         back_populates="subcategories",
         sa_relationship_kwargs={"remote_side": "ProductCategory.ProductCategoryID"},
     )
-    subcategories: List["ProductCategory"] = Relationship(back_populates="parent_category")
+    subcategories: List["ProductCategory"] = Relationship(
+        back_populates="parent_category"
+    )
 
 
 class Product(ProductBase, table=True):
-    """Product model representing the SalesLT.Product table."""
+    """Product model representing the SalesLT.Product table.
+
+    This model extends ProductBase to include:
+    1. Database-specific configurations (__tablename__, __table_args__)
+    2. Auto-generated fields (ProductID, rowguid, ModifiedDate)
+    3. Relationship configurations
+    """
 
     __tablename__ = "Product"
     __table_args__ = {"schema": "SalesLT"}
 
+    # Auto-generated fields
     ProductID: Optional[int] = Field(default=None, primary_key=True)
     rowguid: str = Field(nullable=False)
     ModifiedDate: datetime = Field(
         default_factory=lambda: datetime.now(timezone.utc), nullable=False
     )
 
-    # Relationships
+    # Foreign key fields (moved to ProductBase)
     ProductModelID: Optional[int] = Field(
         default=None, foreign_key="SalesLT.ProductModel.ProductModelID"
     )
@@ -136,18 +149,26 @@ class Product(ProductBase, table=True):
 
     # Back references
     product_model: Optional[ProductModel] = Relationship(back_populates="products")
-    product_category: Optional[ProductCategory] = Relationship(back_populates="products")
+    product_category: Optional[ProductCategory] = Relationship(
+        back_populates="products"
+    )
 
 
-# Pydantic models for API requests/responses
 class ProductCreate(ProductBase):
-    """Schema for creating a new product."""
+    """Schema for creating a new product.
+
+    Inherits from ProductBase to include all required fields for creation,
+    while excluding auto-generated fields that will be set by the API.
+    """
 
     pass
 
 
 class ProductUpdate(SQLModel):
-    """Schema for updating a product."""
+    """Schema for updating a product.
+
+    All fields are optional to allow partial updates.
+    """
 
     Name: Optional[str] = None
     ProductNumber: Optional[str] = None
@@ -164,7 +185,11 @@ class ProductUpdate(SQLModel):
 
 
 class ProductRead(SQLModel):
-    """Schema for reading a product."""
+    """Schema for reading a product.
+
+    Includes all fields that should be returned in API responses,
+    excluding binary data (ThumbNailPhoto) to prevent serialization issues.
+    """
 
     ProductID: int
     Name: str
