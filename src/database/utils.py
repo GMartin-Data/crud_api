@@ -1,20 +1,21 @@
-"""Database utility functions for connection testing and diagnostics.
+"""Database utility functions.
 
-This module provides tools for verifying database connectivity and gathering
-system information using SQLModel's session management. It serves both as a
-diagnostic tool and as an example of proper session usage.
+This module provides tools for:
+1. Database connectivity verification
+2. Table structure inspection
+3. Database information gathering
+4. Schema validation
 """
 
-from typing import Optional, Tuple
+from typing import Dict, Optional, Tuple
 
 from sqlmodel import Session, text
 
-from .session import engine
 from src.config.logger import setup_logger
+from .connection import get_engine
 
-
-# Create a logger specifically for connection testing
-db_utils_logger = setup_logger("database_utils", "database_utils.log")
+# Create a logger specifically for database utilities
+utils_logger = setup_logger("database.utils", "database_utils.log")
 
 
 def verify_database_connection() -> Tuple[bool, Optional[str]]:
@@ -31,25 +32,72 @@ def verify_database_connection() -> Tuple[bool, Optional[str]]:
             - Error message if connection fails, None if successful
     """
     try:
-        # Create a session with the new engine (from SQLAlchemy)
-        with Session(engine) as session:
-            # Execute a simple query to test connectivity
-            # text() is SQLAlchemy's way of sending raw SQL safely
-            # Notice that we don't need a `cursor` anymore
-            version = session.scalars(text("SELECT @@VERSION")).one()
-
-            db_utils_logger.info(
-                f"✅ Database connection succesful\nSQL Server version: {version}"
+        with Session(get_engine()) as session:
+            version = session.exec(text("SELECT @@VERSION")).one()
+            utils_logger.info(
+                f"✅ Database connection successful\nSQL Server version: {version}"
             )
             return True, None
 
     except Exception as e:
         error_msg = f"Database connection failed: {str(e)}"
-        db_utils_logger.error(f"❌ {error_msg}")
+        utils_logger.error(f"❌ {error_msg}")
         return False, error_msg
 
 
-def get_database_info() -> dict:
+def verify_required_tables() -> Tuple[bool, Optional[str]]:
+    """Verify that all required tables exist in the database.
+
+    This function checks for the existence of all product-related tables
+    in the SalesLT schema.
+
+    Returns:
+        Tuple[bool, Optional[str]]: Success status and error message if any
+
+    Raises:
+        ValueError: If required tables are missing
+    """
+    try:
+        required_tables = {
+            "Product",
+            "ProductCategory",
+            "ProductModel",
+            "ProductDescription",
+            "ProductModelProductDescription",
+        }
+
+        with Session(get_engine()) as session:
+            # Create a dynamic query with table names
+            table_conditions = " OR ".join(
+                f"t.name = '{table}'" for table in required_tables
+            )
+            table_query = text(f"""
+                SELECT t.name AS table_name
+                FROM sys.tables t
+                JOIN sys.schemas s ON t.schema_id = s.schema_id
+                WHERE s.name = 'SalesLT'
+                AND ({table_conditions})
+            """)
+
+            results = session.execute(table_query).fetchall()
+            existing_tables = {row.table_name for row in results}
+            missing_tables = required_tables - existing_tables
+
+            if missing_tables:
+                error_msg = f"Missing required tables: {missing_tables}"
+                utils_logger.error(f"❌ {error_msg}")
+                return False, error_msg
+
+            utils_logger.info("✅ All required tables exist")
+            return True, None
+
+    except Exception as e:
+        error_msg = f"Failed to verify tables: {str(e)}"
+        utils_logger.error(f"❌ {error_msg}")
+        return False, error_msg
+
+
+def get_database_info() -> Dict[str, str]:
     """Retrieve basic information about the database connection.
 
     This function collects various pieces of information about the
@@ -58,20 +106,20 @@ def get_database_info() -> dict:
 
     Returns:
         dict: Database information including:
-            - driver version,
-            - server version...
-            And other relevant details.
+            - server_version: SQL Server version
+            - database_name: Current database name
+            - available_tables: List of tables in the database
     """
-    info = {}
+    info: Dict[str, str] = {}
 
     try:
-        with Session(engine) as session:
+        with Session(get_engine()) as session:
             # Get SQL server version
-            version = session.scalars(text("SELECT @@VERSION")).one()
+            version = session.exec(text("SELECT @@VERSION")).one()
             info["server_version"] = version
 
             # Get database name
-            db_name = session.scalars(text("SELECT DB_NAME()")).one()
+            db_name = session.exec(text("SELECT DB_NAME()")).one()
             info["database_name"] = db_name
 
             # List all available tables and their schemas
@@ -87,17 +135,17 @@ def get_database_info() -> dict:
             schema_info = session.exec(schema_query).fetchall()
             info["available_tables"] = [f"{row[0]}.{row[1]}" for row in schema_info]
 
-            db_utils_logger.info("✅ Successfully retrieved database information")
+            utils_logger.info("✅ Successfully retrieved database information")
 
     except Exception as e:
         error_msg = f"❌ Failed to retrieve database information: {str(e)}"
-        db_utils_logger.error(error_msg)
+        utils_logger.error(error_msg)
         info["error"] = error_msg
 
     return info
 
 
-def inspect_table_structure(table_name: str, schema: str = "SalesLT") -> dict:
+def inspect_table_structure(table_name: str, schema: str = "SalesLT") -> Dict:
     """Examine the structure of a specific database table.
 
     This function retrieves detailed information about table columns,
@@ -111,9 +159,9 @@ def inspect_table_structure(table_name: str, schema: str = "SalesLT") -> dict:
     Returns:
         dict: Column information including types and constraints
     """
-    table_info = {}
+    table_info: Dict = {}
     try:
-        with Session(engine) as session:
+        with Session(get_engine()) as session:
             # Query to get column information
             columns_query = text("""
                 SELECT 
@@ -162,43 +210,13 @@ def inspect_table_structure(table_name: str, schema: str = "SalesLT") -> dict:
                 }
                 table_info[row.column_name] = column_info
 
-            db_utils_logger.info(
+            utils_logger.info(
                 f"✅ Successfully retrieved structure for {schema}.{table_name}"
             )
 
     except Exception as e:
         error_msg = f"Failed to retrieve table structure: {str(e)}"
-        db_utils_logger.error(f"❌ {error_msg}")
+        utils_logger.error(f"❌ {error_msg}")
         table_info["error"] = error_msg
 
     return table_info
-
-
-if __name__ == "__main__":
-    print("⏳ Testing database connection...")
-    success, error = verify_database_connection()
-
-    if success:
-        print("\n✅ Connection successful!")
-        print("\nRetrieving database information...")
-        info = get_database_info()
-
-        print("\n⛁ Database Information:")
-        for key, value in info.items():
-            if key == "available_tables":
-                print("\nAvailable Tables:")
-                for table in value:
-                    print(f"  - {table}")
-            else:
-                print(f"{key}: {value}")
-
-        # Add table structure inspection
-        table_name: str = input("Enter the table name to inspect: ")
-        print(f"\n🔎 Inspecting '{table_name}' table structure:")
-        table_structure = inspect_table_structure(table_name)
-        for column, details in table_structure.items():
-            print(f"\n{column}:")
-            for attr, value in details.items():
-                print(f"  {attr}: {value}")
-    else:
-        print(f"\n❌ Connection failed:\nError: {error}")
