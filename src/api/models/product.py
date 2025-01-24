@@ -258,6 +258,8 @@ class ProductUpdate(SQLModel):
     """Schema for updating a product.
     
     All fields are optional to allow partial updates.
+    Each field that is provided will be updated, while
+    fields that are not provided will remain unchanged.
     """
     Name: Optional[str] = None
     ProductNumber: Optional[str] = None
@@ -271,6 +273,18 @@ class ProductUpdate(SQLModel):
     DiscontinuedDate: Optional[datetime] = None
     ProductModelID: Optional[int] = None
     ProductCategoryID: Optional[int] = None
+
+    class Config:
+        json_schema_extra = {
+            "example": {
+                "Name": "Mountain-200 Silver, 40",  # Changed size in name
+                "Color": "Black",                   # Changed color
+                "ListPrice": Decimal("2399.99"),    # Increased price
+                "Size": "40",                       # Changed size
+                "SellEndDate": "2025-12-31T00:00:00Z",  # Added end date
+                "ProductCategoryID": 7              # Changed category
+            }
+        }
 
 
 class ProductRead(SQLModel):
