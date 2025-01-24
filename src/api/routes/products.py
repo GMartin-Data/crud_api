@@ -3,11 +3,13 @@
 This module implements the REST API endpoints for product management.
 """
 
+import logging
 from typing import List
 from uuid import uuid4
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlmodel import Session, select
 from datetime import datetime, timezone
+from sqlalchemy.exc import IntegrityError
 
 from src.database.connection import get_session
 from src.api.models.product import (
@@ -16,6 +18,10 @@ from src.api.models.product import (
     ProductRead,
     ProductUpdate,
 )
+
+# Configure logger for this module
+logger = logging.getLogger(__name__)
+
 
 router = APIRouter(prefix="/products", tags=["products"])
 
@@ -68,7 +74,7 @@ async def get_product(
     return product
 
 
-@router.post("", response_model=ProductRead, status_code=status.HTTP_201_CREATED)
+@router.post("/", response_model=ProductRead, status_code=status.HTTP_201_CREATED)
 async def create_product(
     product: ProductCreate,
     session: Session = Depends(get_session),
@@ -103,17 +109,51 @@ async def create_product(
 
         return db_product
 
-    except ValueError as e:
-        raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-            detail=str(e)
-        )
-    except Exception as e:
-        # Log the error here
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"An error occurred while creating the product:\n{str(e)}"
-        )
+    except IntegrityError as e:
+        session.rollback()
+        error_msg = str(e.orig)
+        if "AK_Product_Name" in error_msg:
+            logger.warning(
+                "Attempted to create product with duplicate name: %s",
+                product.Name,
+                extra={
+                    "product_name": product.Name,
+                    "error_type": "duplicate_name",
+                }
+            )
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail=f"A product with the name '{product.Name}' already exists."
+            )
+        elif "AK_Product_ProductNumber" in error_msg:
+            logger.warning(
+                "Attempted to create product with duplicate number: %s",
+                product.ProductNumber,
+                extra={
+                    "product_number": product.ProductNumber,
+                    "error_type": "duplicate_number",
+                }
+            )
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail=f"A product with the product number '{product.ProductNumber}' already exists."
+            )
+        else:
+            # Log unexpected integrity errors with full context
+            logger.error(
+                "Unexpected database constraint violation while creating product: %s",
+                error_msg,
+                extra={
+                    "product_data": product.model_dump(),
+                    "error_type": "unknown_constraint",
+                    "error_details": error_msg,
+                },
+                exc_info=True
+            )
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="An unexpected database constraint violation occurred."
+            )
 
 
 @router.put("/{product_id}", response_model=ProductRead)
