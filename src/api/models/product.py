@@ -163,13 +163,25 @@ class ProductUpdate(SQLModel):
     ProductCategoryID: Optional[int] = None
 
 
-class ProductRead(ProductBase):
+class ProductRead(SQLModel):
     """Schema for reading a product."""
 
     ProductID: int
+    Name: str
+    ProductNumber: str
+    Color: Optional[str] = None
+    StandardCost: Decimal
+    ListPrice: Decimal
+    Size: Optional[str] = None
+    Weight: Optional[Decimal] = None
+    SellStartDate: datetime
+    SellEndDate: Optional[datetime] = None
+    DiscontinuedDate: Optional[datetime] = None
+    ThumbnailPhotoFileName: Optional[str] = None
     ProductModelID: Optional[int] = None
     ProductCategoryID: Optional[int] = None
     ModifiedDate: datetime
+    rowguid: str
 
     class Config:
         """Pydantic model configuration."""
