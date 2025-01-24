@@ -5,16 +5,21 @@ in the SalesLT schema of the database.
 """
 
 from datetime import datetime, timezone
-from enum import Enum
 from decimal import Decimal
 from typing import List, Optional
+from enum import Enum
 
+from sqlalchemy import Enum as SQLAlchemyEnum
 from pydantic import validator
 from sqlmodel import Field, Relationship, SQLModel
 
 
 class ProductSize(str, Enum):
-    """Valid product sizes."""
+    """Valid product sizes.
+    
+    Using string enum ensures the values stored in the database
+    match exactly what we want to display.
+    """
     XS = "XS"
     S = "S"
     M = "M"
@@ -34,6 +39,15 @@ class ProductSize(str, Enum):
     SIZE_62 = "62"
     SIZE_70 = "70"
 
+    @classmethod
+    def get_valid_sizes(cls) -> str:
+        """Return a formatted string of valid sizes."""
+        return ", ".join(sorted(v.value for v in cls))
+
+    def __str__(self) -> str:
+        """Return the size value rather than the enum name."""
+        return self.value
+
 
 class ProductBase(SQLModel):
     """Base model for Product with shared attributes.
@@ -48,8 +62,8 @@ class ProductBase(SQLModel):
     ListPrice: Decimal = Field(nullable=False)
     Size: Optional[ProductSize] = Field(
         None,
-        description="Product size. Available sizes include standard letter sizes (XS, S, M, L) "
-                "and numeric sizes (38-70)."
+        description=f"Product size. Valid sizes are: {ProductSize.get_valid_sizes()}",
+        sa_type=SQLAlchemyEnum(ProductSize, values_callable=lambda x: [e.value for e in x], native_enum=False)
     )
     Weight: Optional[Decimal] = None
     SellStartDate: datetime = Field(nullable=False)
@@ -79,13 +93,6 @@ class ProductBase(SQLModel):
             raise ValueError('Color must be 30 characters or less')
         return v
 
-    @validator('Size')
-    def validate_size(cls, v):
-        if v is not None and v not in ProductSize.__members__.values():
-            valid_sizes = [size.value for size in ProductSize]
-            raise ValueError(f'Size must be one of: {", ".join(valid_sizes)}')
-        return v
-
     @validator('ThumbnailPhotoFileName')
     def validate_photo_filename(cls, v):
         if v is not None and len(v) > 100:
@@ -95,7 +102,7 @@ class ProductBase(SQLModel):
     @validator('Weight')
     def validate_weight(cls, v):
         if v is not None:
-            # Ensure weight has at most 2 decimal places and is within valid range
+            # Ensure weight has at most 2 decimal places
             return Decimal(str(v)).quantize(Decimal('0.01'))
         return v
 
