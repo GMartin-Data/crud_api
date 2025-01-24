@@ -86,21 +86,34 @@ async def create_product(
         Auto-generated fields (ProductID, rowguid, ModifiedDate) are set here
         before committing to the database.
     """
-    # Convert ProductCreate to dict and add auto-generated fields
-    product_data = product.model_dump()
-    product_data.update(
-        {"rowguid": str(uuid4()), "ModifiedDate": datetime.now(timezone.utc)}
-    )
+    try:
+        # Convert ProductCreate to dict and add auto-generated fields
+        product_data = product.model_dump()
+        product_data.update(
+            {"rowguid": str(uuid4()), "ModifiedDate": datetime.now(timezone.utc)}
+        )
 
-    # Create Product instance with all fields
-    db_product = Product.model_validate(product_data)
+        # Create Product instance with all fields
+        db_product = Product.model_validate(product_data)
 
-    # Add and commit to database
-    session.add(db_product)
-    session.commit()
-    session.refresh(db_product)
+        # Add and commit to database
+        session.add(db_product)
+        session.commit()
+        session.refresh(db_product)
 
-    return db_product
+        return db_product
+
+    except ValueError as e:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=str(e)
+        )
+    except Exception as e:
+        # Log the error here
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"An error occurred while creating the product:\n{str(e)}"
+        )
 
 
 @router.put("/{product_id}", response_model=ProductRead)

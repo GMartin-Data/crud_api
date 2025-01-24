@@ -5,10 +5,34 @@ in the SalesLT schema of the database.
 """
 
 from datetime import datetime, timezone
+from enum import Enum
 from decimal import Decimal
 from typing import List, Optional
+
 from pydantic import validator
 from sqlmodel import Field, Relationship, SQLModel
+
+
+class ProductSize(str, Enum):
+    """Valid product sizes."""
+    XS = "XS"
+    S = "S"
+    M = "M"
+    L = "L"
+    SIZE_38 = "38"
+    SIZE_40 = "40"
+    SIZE_42 = "42"
+    SIZE_44 = "44"
+    SIZE_46 = "46"
+    SIZE_48 = "48"
+    SIZE_50 = "50"
+    SIZE_52 = "52"
+    SIZE_54 = "54"
+    SIZE_56 = "56"
+    SIZE_58 = "58"
+    SIZE_60 = "60"
+    SIZE_62 = "62"
+    SIZE_70 = "70"
 
 
 class ProductBase(SQLModel):
@@ -22,7 +46,11 @@ class ProductBase(SQLModel):
     Color: Optional[str] = None
     StandardCost: Decimal = Field(nullable=False)
     ListPrice: Decimal = Field(nullable=False)
-    Size: Optional[str] = None
+    Size: Optional[ProductSize] = Field(
+        None,
+        description="Product size. Available sizes include standard letter sizes (XS, S, M, L) "
+                "and numeric sizes (38-70)."
+    )
     Weight: Optional[Decimal] = None
     SellStartDate: datetime = Field(nullable=False)
     SellEndDate: Optional[datetime] = None
@@ -53,8 +81,9 @@ class ProductBase(SQLModel):
 
     @validator('Size')
     def validate_size(cls, v):
-        if v is not None and len(v) > 10:
-            raise ValueError('Size must be 10 characters or less')
+        if v is not None and v not in ProductSize.__members__.values():
+            valid_sizes = [size.value for size in ProductSize]
+            raise ValueError(f'Size must be one of: {", ".join(valid_sizes)}')
         return v
 
     @validator('ThumbnailPhotoFileName')
@@ -70,6 +99,24 @@ class ProductBase(SQLModel):
             return Decimal(str(v)).quantize(Decimal('0.01'))
         return v
 
+    class Config:
+        json_schema_extra = {
+            "example": {
+                "Name": "Mountain-200 Silver, 38",
+                "ProductNumber": "BK-MTB2-038",
+                "Color": "Silver",
+                "StandardCost": Decimal("1912.15"),
+                "ListPrice": Decimal("2319.99"),
+                "Size": "38",
+                "Weight": Decimal("22.50"),
+                "SellStartDate": "2021-06-01T00:00:00Z",
+                "SellEndDate": None,
+                "DiscontinuedDate": None,
+                "ThumbnailPhotoFileName": "mountain-200-silver-38.jpg",
+                "ProductModelID": 19,
+                "ProductCategoryID": 6
+            }
+        }
 
 # Define the link model first so it can be referenced by other models
 class ProductModelProductDescription(SQLModel, table=True):
