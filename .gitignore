@@ -192,3 +192,9 @@ pyrightconfig.json
 
 # cursor
 .cursorrules
+
+# Logs
+# Ignore everything in logs
+logs/*
+# But don't ignore the .gitkeep file
+!logs/.gitkeep
